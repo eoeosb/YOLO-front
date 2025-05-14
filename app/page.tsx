@@ -1,103 +1,230 @@
-import Image from "next/image";
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Image from 'next/image';
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
+  const router = useRouter();
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) return;
+
+    setUploading(true);
+    setMessage('');
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch('http://127.0.0.1:8000/api/video/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessage(
+          '영상이 성공적으로 업로드되었습니다. 분석이 시작되었습니다.'
+        );
+        router.push(`/result?filename=${encodeURIComponent(data.filename)}`);
+      } else {
+        setMessage(data.detail || '업로드 중 오류가 발생했습니다.');
+      }
+    } catch (error) {
+      setMessage('업로드 중 오류가 발생했습니다.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className='min-h-screen bg-gradient-to-b from-gray-50 to-white'>
+      <div className='absolute inset-0 bg-grid-pattern opacity-5'></div>
+
+      <main className='relative max-w-4xl mx-auto px-4 py-16 sm:px-6 lg:px-8'>
+        {/* Hero Section */}
+        <div className='text-center mb-16'>
+          <h1 className='text-4xl sm:text-5xl font-bold text-gray-900 mb-4'>
+            AI 기반 PPL 분석
+          </h1>
+          <p className='text-xl text-gray-600 max-w-2xl mx-auto'>
+            YOLO와 LLM을 활용한 고급 영상 분석으로 PPL 효과를 정확하게
+            측정하세요
+          </p>
+        </div>
+
+        {/* Features Grid */}
+        <div className='grid grid-cols-1 md:grid-cols-3 gap-8 mb-16'>
+          <div className='bg-white p-6 rounded-xl shadow-sm border border-gray-100'>
+            <div className='w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4'>
+              <svg
+                className='w-6 h-6 text-blue-600'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth='2'
+                  d='M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z'
+                />
+              </svg>
+            </div>
+            <h3 className='text-lg font-semibold mb-2'>실시간 분석</h3>
+            <p className='text-gray-600'>
+              YOLO를 통한 실시간 로고 감지 및 분석
+            </p>
+          </div>
+
+          <div className='bg-white p-6 rounded-xl shadow-sm border border-gray-100'>
+            <div className='w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4'>
+              <svg
+                className='w-6 h-6 text-green-600'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth='2'
+                  d='M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z'
+                />
+              </svg>
+            </div>
+            <h3 className='text-lg font-semibold mb-2'>정확한 측정</h3>
+            <p className='text-gray-600'>
+              노출 시간, 빈도, 신뢰도를 정밀하게 측정
+            </p>
+          </div>
+
+          <div className='bg-white p-6 rounded-xl shadow-sm border border-gray-100'>
+            <div className='w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4'>
+              <svg
+                className='w-6 h-6 text-purple-600'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'
+              >
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth='2'
+                  d='M13 10V3L4 14h7v7l9-11h-7z'
+                />
+              </svg>
+            </div>
+            <h3 className='text-lg font-semibold mb-2'>AI 분석</h3>
+            <p className='text-gray-600'>GPT-4를 활용한 PPL 효과성 분석</p>
+          </div>
+        </div>
+
+        {/* Upload Section */}
+        <div className='bg-white rounded-2xl shadow-xl p-8 border border-gray-100'>
+          <form onSubmit={handleSubmit} className='space-y-6'>
+            <div className='border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-blue-500 transition-colors duration-200'>
+              <input
+                type='file'
+                onChange={handleFileChange}
+                accept='video/*'
+                className='hidden'
+                id='file-upload'
+              />
+              <label
+                htmlFor='file-upload'
+                className='cursor-pointer flex flex-col items-center'
+              >
+                <svg
+                  className='w-12 h-12 text-gray-400 mb-4'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'
+                >
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth='2'
+                    d='M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12'
+                  />
+                </svg>
+                <span className='text-lg font-medium text-gray-600'>
+                  {file ? file.name : '영상 파일을 선택하거나 드래그하세요'}
+                </span>
+                <span className='text-sm text-gray-500 mt-2'>
+                  MP4, MOV, AVI 형식 지원
+                </span>
+              </label>
+            </div>
+
+            <button
+              type='submit'
+              disabled={!file || uploading}
+              className={`w-full py-4 px-6 rounded-xl text-lg font-medium transition-all duration-200 ${
+                !file || uploading
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl'
+              }`}
+            >
+              {uploading ? (
+                <span className='flex items-center justify-center'>
+                  <svg
+                    className='animate-spin -ml-1 mr-3 h-5 w-5 text-white'
+                    fill='none'
+                    viewBox='0 0 24 24'
+                  >
+                    <circle
+                      className='opacity-25'
+                      cx='12'
+                      cy='12'
+                      r='10'
+                      stroke='currentColor'
+                      strokeWidth='4'
+                    ></circle>
+                    <path
+                      className='opacity-75'
+                      fill='currentColor'
+                      d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
+                    ></path>
+                  </svg>
+                  분석 중...
+                </span>
+              ) : (
+                '분석 시작하기'
+              )}
+            </button>
+          </form>
+
+          {message && (
+            <div
+              className={`mt-6 p-4 rounded-lg ${
+                message.includes('성공')
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-red-50 text-red-700 border border-red-200'
+              }`}
+            >
+              {message}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className='mt-16 text-center text-gray-500 text-sm'>
+          <p>© 2024 PPL Analysis. All rights reserved.</p>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }
