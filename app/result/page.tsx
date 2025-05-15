@@ -20,59 +20,205 @@ interface AnalysisResults {
   [key: string]: AnalysisResult;
 }
 
+interface WebSocketMessage {
+  status: string;
+  message: string;
+  progress: number;
+  update_time?: string;
+  analysis?: AnalysisResults;
+}
+
 export default function ResultPage() {
   const searchParams = useSearchParams();
   const [analysisResults, setAnalysisResults] =
     useState<AnalysisResults | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<WebSocketMessage | null>(null);
 
   useEffect(() => {
-    const fetchResults = async () => {
-      try {
-        const filename = searchParams.get('filename');
-        if (!filename) {
-          throw new Error('파일 이름이 없습니다.');
-        }
+    const filename = searchParams.get('filename');
+    if (!filename) {
+      setError('파일 이름이 없습니다.');
+      setLoading(false);
+      return;
+    }
 
+    const checkAnalysisStatus = async () => {
+      try {
         const response = await fetch(
           `http://127.0.0.1:8000/api/video/analysis/${encodeURIComponent(
             filename
           )}`
         );
+
         if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error(
-              '분석이 아직 완료되지 않았습니다. 잠시 후 다시 시도해주세요.'
-            );
-          }
-          if (response.status === 202) {
-            throw new Error('분석이 진행 중입니다. 잠시 후 다시 시도해주세요.');
-          }
           throw new Error('분석 결과를 불러오는데 실패했습니다.');
         }
+
         const data = await response.json();
-        setAnalysisResults(data.analysis);
+        console.log('서버 응답 데이터:', data);
+
+        // 분석이 완료된 경우
+        if (data.status === 'completed') {
+          // 분석 결과를 별도로 가져옵니다
+          try {
+            const resultsResponse = await fetch(
+              `http://127.0.0.1:8000/api/video/result/${encodeURIComponent(
+                filename
+              )}`
+            );
+
+            if (!resultsResponse.ok) {
+              throw new Error('분석 결과를 불러오는데 실패했습니다.');
+            }
+
+            const resultsData = await resultsResponse.json();
+            console.log('분석 결과 데이터:', resultsData);
+
+            const analysisData =
+              resultsData.analysis || resultsData.analysis_results;
+            if (!analysisData) {
+              throw new Error('분석 결과가 없습니다.');
+            }
+
+            setAnalysisResults(analysisData);
+            setLoading(false);
+            return true;
+          } catch (error) {
+            console.error('결과 로딩 중 오류:', error);
+            setError('분석 결과를 불러오는데 실패했습니다.');
+            setLoading(false);
+            return true;
+          }
+        }
+
+        // 분석이 진행 중인 경우
+        if (data.status === 'processing' || response.status === 202) {
+          return false;
+        }
+
+        throw new Error('알 수 없는 상태입니다.');
       } catch (err) {
         setError(
           err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.'
         );
-      } finally {
         setLoading(false);
+        return true; // 에러 발생 시 웹소켓 연결 시도하지 않음
       }
     };
 
-    if (searchParams.get('filename')) {
-      fetchResults();
-    }
+    const connectWebSocket = (fileId: string) => {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = '127.0.0.1:8000'; // 개발 환경용
+
+      console.log('WebSocket 연결 시도:', fileId);
+      const ws = new WebSocket(`${protocol}//${host}/api/video/ws/${fileId}`);
+
+      ws.onopen = () => {
+        console.log('WebSocket 연결됨');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as WebSocketMessage;
+          console.log('WebSocket 메시지 수신:', data);
+
+          if (data.status === 'completed') {
+            // 분석 결과를 별도로 가져옵니다
+            fetch(
+              `http://127.0.0.1:8000/api/video/result/${encodeURIComponent(
+                filename
+              )}`
+            )
+              .then((response) => {
+                if (!response.ok) {
+                  throw new Error('분석 결과를 불러오는데 실패했습니다.');
+                }
+                return response.json();
+              })
+              .then((resultsData) => {
+                console.log('웹소켓 완료 후 분석 결과:', resultsData);
+                const analysisData =
+                  resultsData.analysis || resultsData.analysis_results;
+                if (!analysisData) {
+                  throw new Error('분석 결과가 없습니다.');
+                }
+                setAnalysisResults(analysisData);
+                setLoading(false);
+                ws.close();
+              })
+              .catch((error) => {
+                console.error('결과 로딩 중 오류:', error);
+                setError('분석 결과를 불러오는데 실패했습니다.');
+                setLoading(false);
+                ws.close();
+              });
+          } else if (data.status === 'error') {
+            setError(data.message);
+            setLoading(false);
+            ws.close();
+          } else {
+            setProgress(data);
+          }
+        } catch (error) {
+          console.error('메시지 처리 중 오류:', error);
+        }
+      };
+
+      ws.onclose = (event) => {
+        console.log('WebSocket 연결 종료:', event.code);
+
+        // 정상 종료(1000) 또는 서버 오류(1011)가 아닌 경우에만 재연결 시도
+        if (event.code !== 1000 && event.code !== 1011 && loading) {
+          console.log('재연결 시도...');
+          setTimeout(() => connectWebSocket(fileId), 1000);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket 오류:', error);
+      };
+
+      return ws;
+    };
+
+    // 초기 상태 확인 후 필요한 경우에만 웹소켓 연결
+    const initializeConnection = async () => {
+      const isCompleted = await checkAnalysisStatus();
+      if (!isCompleted) {
+        connectWebSocket(filename);
+      }
+    };
+
+    initializeConnection();
   }, [searchParams]);
 
   if (loading) {
     return (
       <div className='min-h-screen flex items-center justify-center'>
-        <div className='text-center'>
-          <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4'></div>
-          <p className='text-gray-600'>분석 결과를 불러오는 중...</p>
+        <div className='max-w-md w-full mx-4'>
+          <div className='bg-white rounded-2xl shadow-xl p-8 border border-gray-100'>
+            <div className='text-center mb-8'>
+              <div className='animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4'></div>
+              <h2 className='text-xl font-semibold text-gray-900 mb-2'>
+                {progress ? progress.message : '분석 결과를 불러오는 중...'}
+              </h2>
+              {progress && (
+                <div className='mt-4'>
+                  <div className='w-full bg-gray-200 rounded-full h-2.5'>
+                    <div
+                      className='bg-blue-600 h-2.5 rounded-full transition-all duration-500'
+                      style={{ width: `${progress.progress}%` }}
+                    ></div>
+                  </div>
+                  <p className='text-sm text-gray-600 mt-2'>
+                    {progress.progress}% 완료
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );

@@ -3,11 +3,23 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
+import LoadingScreen from './components/LoadingScreen';
+
+interface ProgressData {
+  status: string;
+  message: string;
+  progress: number;
+}
+
+interface WebSocketMessage extends ProgressData {
+  update_time?: string;
+}
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
+  const [progress, setProgress] = useState<ProgressData | null>(null);
   const router = useRouter();
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -16,18 +28,116 @@ export default function Home() {
     }
   };
 
+  const startWebSocketConnection = async (fileId: string) => {
+    try {
+      // 먼저 현재 분석 상태 확인
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/video/analysis/${fileId}`
+      );
+      const result = await response.json();
+
+      // 이미 완료된 경우 바로 결과 페이지로 이동
+      if (result.status === 'completed') {
+        router.push(`/result?filename=${fileId}`);
+        return;
+      }
+
+      // 진행 중인 경우 웹소켓 연결 시작
+      connectWebSocket(fileId);
+    } catch (error) {
+      console.error('상태 확인 실패:', error);
+      setMessage('분석 상태 확인 중 오류가 발생했습니다.');
+      setProgress(null);
+      setUploading(false);
+    }
+  };
+
+  const connectWebSocket = (fileId: string) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = '127.0.0.1:8000'; // 개발 환경용
+
+    console.log('WebSocket 연결 시도:', fileId);
+    const ws = new WebSocket(`${protocol}//${host}/api/video/ws/${fileId}`);
+
+    ws.onopen = () => {
+      console.log('WebSocket 연결됨');
+      setProgress({
+        status: 'processing',
+        message: '분석 진행 중...',
+        progress: 0,
+      });
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as WebSocketMessage;
+        console.log('WebSocket 메시지 수신:', data);
+
+        if (data.status === 'completed') {
+          setProgress({
+            status: 'completed',
+            message: '분석이 완료되었습니다. 결과 페이지로 이동합니다...',
+            progress: 100,
+          });
+
+          // 완료 메시지를 보여준 후 결과 페이지로 이동
+          setTimeout(() => {
+            router.push(`/result?filename=${fileId}`);
+          }, 1500);
+        } else if (data.status === 'error') {
+          setMessage(data.message);
+          setProgress(null);
+          setUploading(false);
+        } else {
+          setProgress({
+            status: data.status,
+            message: data.message,
+            progress: data.progress,
+          });
+        }
+      } catch (error) {
+        console.error('메시지 처리 중 오류:', error);
+      }
+    };
+
+    ws.onclose = (event) => {
+      console.log('WebSocket 연결 종료:', event.code);
+
+      // 정상 종료(1000) 또는 서버 오류(1011)가 아닌 경우에만 재연결 시도
+      if (event.code !== 1000 && event.code !== 1011) {
+        console.log('재연결 시도...');
+        setTimeout(() => connectWebSocket(fileId), 1000);
+      } else if (event.code === 1011) {
+        setMessage('서버에서 오류가 발생했습니다.');
+        setProgress(null);
+        setUploading(false);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket 오류:', error);
+    };
+
+    return ws;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
 
     setUploading(true);
     setMessage('');
+    setProgress({
+      status: 'uploading',
+      message: '파일 업로드 중...',
+      progress: 0,
+    });
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://127.0.0.1:8000/api/video/upload', {
+      const response = await fetch('http://127.0.0.1:8000/api/video/analyze', {
         method: 'POST',
         body: formData,
       });
@@ -35,19 +145,24 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        setMessage(
-          '영상이 성공적으로 업로드되었습니다. 분석이 시작되었습니다.'
-        );
-        router.push(`/result?filename=${encodeURIComponent(data.filename)}`);
+        // 웹소켓 연결 시작
+        startWebSocketConnection(data.file_id);
       } else {
         setMessage(data.detail || '업로드 중 오류가 발생했습니다.');
+        setProgress(null);
+        setUploading(false);
       }
     } catch (error) {
       setMessage('업로드 중 오류가 발생했습니다.');
-    } finally {
+      setProgress(null);
       setUploading(false);
     }
   };
+
+  // 로딩 화면 표시
+  if (progress) {
+    return <LoadingScreen progress={progress} />;
+  }
 
   return (
     <div className='min-h-screen bg-gradient-to-b from-gray-50 to-white'>
@@ -199,7 +314,7 @@ export default function Home() {
                       d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'
                     ></path>
                   </svg>
-                  분석 중...
+                  업로드 중...
                 </span>
               ) : (
                 '분석 시작하기'
@@ -207,7 +322,7 @@ export default function Home() {
             </button>
           </form>
 
-          {message && (
+          {message && !progress && (
             <div
               className={`mt-6 p-4 rounded-lg ${
                 message.includes('성공')
