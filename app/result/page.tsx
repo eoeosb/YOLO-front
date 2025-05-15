@@ -2,6 +2,8 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import type { ComponentPropsWithoutRef } from 'react';
 
 interface Detection {
   class: string;
@@ -14,6 +16,7 @@ interface AnalysisResult {
   frequency: number;
   avg_confidence: number;
   llm_analysis: string;
+  detected_images?: string[];
 }
 
 interface AnalysisResults {
@@ -410,9 +413,117 @@ export default function ResultPage() {
                   </div>
                   <div className='prose prose-indigo max-w-none'>
                     <div className='whitespace-pre-wrap text-gray-700 bg-white rounded-lg p-6 shadow-sm'>
-                      {result.llm_analysis}
+                      <ReactMarkdown
+                        components={{
+                          h3: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'h3'>) => (
+                            <h3
+                              className='text-xl font-bold text-gray-900 mt-6 mb-4'
+                              {...props}
+                            >
+                              {children}
+                            </h3>
+                          ),
+                          h4: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'h4'>) => (
+                            <h4
+                              className='text-lg font-semibold text-gray-800 mt-4 mb-2'
+                              {...props}
+                            >
+                              {children}
+                            </h4>
+                          ),
+                          p: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'p'>) => (
+                            <p className='text-gray-700 mb-0' {...props}>
+                              {children}
+                            </p>
+                          ),
+                          ul: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'ul'>) => (
+                            <ul
+                              className='list-disc pl-6 space-y-2 mb-4'
+                              {...props}
+                            >
+                              {children}
+                            </ul>
+                          ),
+                          li: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'li'>) => {
+                            if (
+                              Array.isArray(children) &&
+                              children.length === 1 &&
+                              typeof children[0] === 'object' &&
+                              (children[0] as any).type === 'p'
+                            ) {
+                              return (
+                                <li className='text-gray-700' {...props}>
+                                  {(children[0] as any).props.children}
+                                </li>
+                              );
+                            }
+                            return (
+                              <li className='text-gray-700' {...props}>
+                                {children}
+                              </li>
+                            );
+                          },
+                          strong: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'strong'>) => (
+                            <strong
+                              className='font-semibold text-gray-900'
+                              {...props}
+                            >
+                              {children}
+                            </strong>
+                          ),
+                          blockquote: ({
+                            children,
+                            ...props
+                          }: ComponentPropsWithoutRef<'blockquote'>) => (
+                            <blockquote
+                              className='border-l-4 border-indigo-500 pl-4 my-4 italic text-gray-700'
+                              {...props}
+                            >
+                              {children}
+                            </blockquote>
+                          ),
+                        }}
+                      >
+                        {result.llm_analysis}
+                      </ReactMarkdown>
                     </div>
                   </div>
+                  {/* 감지 이미지 썸네일 관련 코드 주석 처리 */}
+                  {/**
+                  {result.detected_images && result.detected_images.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-6">
+                      {result.detected_images.map((img: string, idx: number) => {
+                        console.log('감지 이미지 URL:', img);
+                        return (
+                          <img
+                            key={idx}
+                            src={img}
+                            alt={`감지 이미지 ${idx + 1}`}
+                            className="w-24 h-16 object-cover rounded border"
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                  */}
                 </div>
               </div>
             </div>
